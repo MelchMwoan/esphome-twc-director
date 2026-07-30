@@ -199,20 +199,18 @@ The `current_available` field is encoded as centi‑amps; for example, `3200` re
 
 Payload layout (as observed from decoded frames):
 
-| Field       | Size (bytes) | Type    | Scale | Notes                          |
-|-------------|--------------|---------|-------|--------------------------------|
-| total_wh    | 4            | uint32  | 0.001 | Cumulative energy in Wh (kWh = total_wh / 1000.0) |
-| separator   | 1            | uint8   | -     | Reserved / header              |
-| phase_l1_v  | 1            | uint8   | 1     | Phase L1 voltage (volts)       |
-| phase_l1_i  | 1            | uint8   | 0.5   | Phase L1 current (amps)        |
-| sep_l1      | 2            | uint16  | -     | Phase L1 reserved              |
-| phase_l2_v  | 1            | uint8   | 1     | Phase L2 voltage (volts)       |
-| phase_l2_i  | 1            | uint8   | 0.5   | Phase L2 current (amps)        |
-| sep_l2      | 2            | uint16  | -     | Phase L2 reserved              |
-| phase_l3_v  | 1            | uint8   | 1     | Phase L3 voltage (volts)       |
-| phase_l3_i  | 1            | uint8   | 0.5   | Phase L3 current (amps)        |
+| Field       | Size (bytes) | Type    | Scale | Notes                                              |
+|-------------|--------------|---------|-------|----------------------------------------------------|
+| total_wh    | 4            | uint32  | 0.001 | Cumulative energy in Wh (kWh = total_wh / 1000.0)  |
+| phase_l1_v  | 2            | uint16  | 1     | Phase L1 voltage (volts, big-endian)               |
+| phase_l2_v  | 2            | uint16  | 1     | Phase L2 voltage (volts, big-endian)               |
+| phase_l3_v  | 2            | uint16  | 1     | Phase L3 voltage (volts, big-endian)               |
+| phase_l1_i  | 1            | uint8   | 0.5   | Phase L1 current (amps)                            |
+| phase_l2_i  | 1            | uint8   | 0.5   | Phase L2 current (amps)                            |
+| phase_l3_i  | 1            | uint8   | 0.5   | Phase L3 current (amps)                            |
+| padding     | 2            | bytes   | -     | Reserved / padding                                 |
 
-In practice, `total_wh` is reported in Watt-hour units by the Wall Connector and is divided by 1000.0 to obtain kWh. Phase currents are encoded as unsigned integers in 0.5 A steps (the decoder divides raw values by 2.0 to obtain amps). Each phase block occupies 4 bytes starting after byte 4.
+In practice, `total_wh` is reported in Watt-hour units by the Wall Connector and is divided by 1000.0 to obtain kWh. Phase voltages are 16-bit big-endian integers, and phase currents are encoded as unsigned integers in 0.5 A steps (the decoder divides raw values by 2.0 to obtain amps).
 
 ### Version data (FD EC)
 

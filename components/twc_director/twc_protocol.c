@@ -252,7 +252,7 @@ bool twc_decode_peripheral_negotiation_payload(const uint8_t *payload,
 bool twc_decode_meter_payload(const uint8_t *payload,
                                size_t payload_len,
                                twc_meter_data_t *out) {
-  if (payload == NULL || out == NULL || payload_len < 7) {
+  if (payload == NULL || out == NULL || payload_len < 6) {
     return false;
   }
 
@@ -264,25 +264,37 @@ bool twc_decode_meter_payload(const uint8_t *payload,
 
   out->total_energy_kwh = (float)total_wh / 1000.0f;
 
-  // Phase 1 (L1): Voltage at byte 5, Current at byte 6 (0.5A units)
-  out->phase_l1_v = (float)payload[5];
-  out->phase_l1_a = (float)payload[6] / 2.0f;
+  // Phase Voltages (16-bit uint16 big-endian at bytes 4..5, 6..7, 8..9)
+  out->phase_l1_v = (float)(((uint16_t)payload[4] << 8) | (uint16_t)payload[5]);
 
-  // Phase 2 (L2): Voltage at byte 9, Current at byte 10 (0.5A units)
-  if (payload_len >= 11) {
-    out->phase_l2_v = (float)payload[9];
-    out->phase_l2_a = (float)payload[10] / 2.0f;
+  if (payload_len >= 8) {
+    out->phase_l2_v = (float)(((uint16_t)payload[6] << 8) | (uint16_t)payload[7]);
   } else {
     out->phase_l2_v = 0.0f;
+  }
+
+  if (payload_len >= 10) {
+    out->phase_l3_v = (float)(((uint16_t)payload[8] << 8) | (uint16_t)payload[9]);
+  } else {
+    out->phase_l3_v = 0.0f;
+  }
+
+  // Phase Currents (0.5A units at bytes 10, 11, 12)
+  if (payload_len >= 11) {
+    out->phase_l1_a = (float)payload[10] / 2.0f;
+  } else {
+    out->phase_l1_a = 0.0f;
+  }
+
+  if (payload_len >= 12) {
+    out->phase_l2_a = (float)payload[11] / 2.0f;
+  } else {
     out->phase_l2_a = 0.0f;
   }
 
-  // Phase 3 (L3): Voltage at byte 13, Current at byte 14 (0.5A units)
-  if (payload_len >= 15) {
-    out->phase_l3_v = (float)payload[13];
-    out->phase_l3_a = (float)payload[14] / 2.0f;
+  if (payload_len >= 13) {
+    out->phase_l3_a = (float)payload[12] / 2.0f;
   } else {
-    out->phase_l3_v = 0.0f;
     out->phase_l3_a = 0.0f;
   }
 

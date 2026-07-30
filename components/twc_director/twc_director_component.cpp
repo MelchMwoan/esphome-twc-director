@@ -469,25 +469,40 @@ void TWCDirectorComponent::update_evse_sensors_(EvseEntry &evse, uint32_t now) {
   const char *status_str = twc_charge_state_to_string(static_cast<twc_charge_state_t>(status_code));
 
   // Log status transitions with current values for debugging
-  if (evse.last_status_code != -1 && status_code != evse.last_status_code) {
-    const char *old_status_str = twc_charge_state_to_string(
-        static_cast<twc_charge_state_t>(evse.last_status_code));
-
+  if (status_code != evse.last_status_code) {
     float available_a = twc_core_get_current_available_a(core_dev);
     float applied_initial_a = core_dev->applied_initial_current_a;
     float desired_initial_a = core_dev->desired_initial_current_a;
 
-    ESP_LOGI(TAG, "TWC 0x%04X: %s -> %s (available=%.1fA, applied=%.1fA, desired=%.1fA)",
-             evse.address, old_status_str, status_str,
-             available_a, applied_initial_a, desired_initial_a);
+    if (evse.last_status_code != -1) {
+      const char *old_status_str = twc_charge_state_to_string(
+          static_cast<twc_charge_state_t>(evse.last_status_code));
 
-    // Publish to status_log text sensor for Home Assistant history
-    if (evse.status_log) {
-      char log_msg[128];
-      snprintf(log_msg, sizeof(log_msg), "%s -> %s (%.1fA/%.1fA/%.1fA)",
-               old_status_str, status_str,
+      ESP_LOGI(TAG, "TWC 0x%04X: %s -> %s (available=%.1fA, applied=%.1fA, desired=%.1fA)",
+               evse.address, old_status_str, status_str,
                available_a, applied_initial_a, desired_initial_a);
-      evse.status_log->publish_state(log_msg);
+
+      // Publish to status_log text sensor for Home Assistant history
+      if (evse.status_log) {
+        char log_msg[128];
+        snprintf(log_msg, sizeof(log_msg), "%s -> %s (%.1fA/%.1fA/%.1fA)",
+                 old_status_str, status_str,
+                 available_a, applied_initial_a, desired_initial_a);
+        evse.status_log->publish_state(log_msg);
+      }
+    } else {
+      ESP_LOGI(TAG, "TWC 0x%04X: Status %s (available=%.1fA, applied=%.1fA, desired=%.1fA)",
+               evse.address, status_str,
+               available_a, applied_initial_a, desired_initial_a);
+
+      // Publish initial state to status_log text sensor on boot
+      if (evse.status_log) {
+        char log_msg[128];
+        snprintf(log_msg, sizeof(log_msg), "%s (%.1fA/%.1fA/%.1fA)",
+                 status_str,
+                 available_a, applied_initial_a, desired_initial_a);
+        evse.status_log->publish_state(log_msg);
+      }
     }
   }
 
