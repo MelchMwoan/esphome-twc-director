@@ -293,16 +293,17 @@ bool twc_decode_peripheral_negotiation_payload(const uint8_t *payload,
 
 // Decode METER (EB) payload.
 //
-// Payload layout (15 bytes):
-//   [0..3]  : total_energy_kwh (big-endian uint32)
-//   [4]     : phase_l2_v
+// Payload layout (up to 15 bytes):
+//   [0..3]  : total_energy_wh (big-endian uint32, converted to kWh / 1000.0)
+//   [4]     : header / separator
 //   [5]     : phase_l1_v
-//   [6]     : phase_l3_v
-//   [7..8]  : separator (ignored)
-//   [9]     : phase_l2_i (units: 0.5A)
-//   [10]    : phase_l1_i (units: 0.5A)
-//   [11]    : phase_l3_i (units: 0.5A)
-//   [12..14]: padding
+//   [6]     : phase_l1_i (units: 0.5A)
+//   [7..8]  : phase 1 reserved / separator
+//   [9]     : phase_l2_v
+//   [10]    : phase_l2_i (units: 0.5A)
+//   [11..12]: phase 2 reserved / separator
+//   [13]    : phase_l3_v
+//   [14]    : phase_l3_i (units: 0.5A)
 //
 // Returns true on success.
 typedef struct {

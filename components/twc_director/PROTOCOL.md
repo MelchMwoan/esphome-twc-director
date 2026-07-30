@@ -201,17 +201,18 @@ Payload layout (as observed from decoded frames):
 
 | Field       | Size (bytes) | Type    | Scale | Notes                          |
 |-------------|--------------|---------|-------|--------------------------------|
-| total_kwh   | 4            | uint32  | 1     | Cumulative energy counter      |
-| phase_l2_v  | 1            | uint8   | 1     | Line‑to‑neutral or phase L2 V  |
-| phase_l1_v  | 1            | uint8   | 1     | Phase L1 voltage               |
-| phase_l3_v  | 1            | uint8   | 1     | Phase L3 voltage               |
-| separator   | 2            | uint16  | -     | Reserved / separator           |
-| phase_l2_i  | 1            | uint8   | 0.5   | Phase L2 current (scaled)      |
-| phase_l1_i  | 1            | uint8   | 0.5   | Phase L1 current (scaled)      |
-| phase_l3_i  | 1            | uint8   | 0.5   | Phase L3 current (scaled)      |
-| padding     | 3            | bytes   | -     | Reserved / padding             |
+| total_wh    | 4            | uint32  | 0.001 | Cumulative energy in Wh (kWh = total_wh / 1000.0) |
+| separator   | 1            | uint8   | -     | Reserved / header              |
+| phase_l1_v  | 1            | uint8   | 1     | Phase L1 voltage (volts)       |
+| phase_l1_i  | 1            | uint8   | 0.5   | Phase L1 current (amps)        |
+| sep_l1      | 2            | uint16  | -     | Phase L1 reserved              |
+| phase_l2_v  | 1            | uint8   | 1     | Phase L2 voltage (volts)       |
+| phase_l2_i  | 1            | uint8   | 0.5   | Phase L2 current (amps)        |
+| sep_l2      | 2            | uint16  | -     | Phase L2 reserved              |
+| phase_l3_v  | 1            | uint8   | 1     | Phase L3 voltage (volts)       |
+| phase_l3_i  | 1            | uint8   | 0.5   | Phase L3 current (amps)        |
 
-In practice, `total_kwh` is reported in kWh units by the Wall Connector and does not require additional scaling. Phase currents are encoded as unsigned integers in 0.5 A steps (the reference implementation divides the raw values by 2.0 to obtain amps).
+In practice, `total_wh` is reported in Watt-hour units by the Wall Connector and is divided by 1000.0 to obtain kWh. Phase currents are encoded as unsigned integers in 0.5 A steps (the decoder divides raw values by 2.0 to obtain amps). Each phase block occupies 4 bytes starting after byte 4.
 
 ### Version data (FD EC)
 
