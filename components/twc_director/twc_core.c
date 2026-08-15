@@ -194,7 +194,7 @@ bool twc_core_handle_frame(twc_core_t *core,
     // Log checksum validation failure
     if (core->log_cb) {
       char msg[256];
-      char hex_buf[200];
+      char hex_buf[184];  // 60 bytes dumped as "XX " + "..." + NUL; keeps msg provably in bounds
       int pos = 0;
 
       // Build hex dump of failed frame (limit to 60 bytes)

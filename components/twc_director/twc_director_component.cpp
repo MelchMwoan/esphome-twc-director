@@ -153,9 +153,9 @@ void TWCDirectorComponent::loop() {
     bool prev_link_ok = this->link_ok_sensor_->state;
     if (prev_link_ok && !link_ok) {
       ESP_LOGW(TAG, "Link went down! SLIP decoder stats: decoded=%u dropped_overflow=%u dropped_invalid_esc=%u",
-               this->decoder_.frames_decoded,
-               this->decoder_.frames_dropped_overflow,
-               this->decoder_.frames_dropped_invalid_esc);
+               (unsigned)this->decoder_.frames_decoded,
+               (unsigned)this->decoder_.frames_dropped_overflow,
+               (unsigned)this->decoder_.frames_dropped_invalid_esc);
     }
 
     this->publish_binary_sensor_if_changed_(this->link_ok_sensor_, link_ok);
@@ -166,9 +166,9 @@ void TWCDirectorComponent::loop() {
   if (now - last_stats_ms > DECODER_STATS_INTERVAL_MS) {
     last_stats_ms = now;
     ESP_LOGD(TAG, "RX stats: decoded=%u dropped_overflow=%u dropped_invalid_esc=%u",
-             this->decoder_.frames_decoded,
-             this->decoder_.frames_dropped_overflow,
-             this->decoder_.frames_dropped_invalid_esc);
+             (unsigned)this->decoder_.frames_decoded,
+             (unsigned)this->decoder_.frames_dropped_overflow,
+             (unsigned)this->decoder_.frames_dropped_invalid_esc);
     ESP_LOGD(TAG, "TX stats: queued=%u dropped=%u encode_failures=%u",
              (unsigned)this->tx_frames_queued_,
              (unsigned)this->tx_frames_dropped_,
@@ -680,6 +680,10 @@ void TWCDirectorComponent::handle_current_number_control(
       // with the applied (scaled) value that respects global max current
       twc_core_set_desired_session_current(&this->core_, address, value);
       ESP_LOGI(TAG, "Set desired session current for TWC 0x%04X to %.1fA", address, value);
+      break;
+
+    case TWCDirectorCurrentNumber::TYPE_GLOBAL_MAX:
+      // Returned early above; listed so -Wswitch keeps catching genuinely new types
       break;
   }
 }
