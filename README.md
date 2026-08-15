@@ -19,6 +19,7 @@ This component implements a TWC Director (master controller) that communicates w
 - Adjust current limits dynamically through Home Assistant
 - Support for automatic device discovery and binding
 - Built-in web interface for standalone operation
+- Keeps charging through Home Assistant restarts and upgrades, with diagnostics to explain any outage
 
 ## Hardware Requirements
 
@@ -225,6 +226,7 @@ wifi:
 api:
   encryption:
     key: !secret tesla_director_api_key
+  reboot_timeout: 0s  # See "Reliability and Recovery" below
 
 # OTA updates
 ota:
@@ -262,6 +264,77 @@ tesla_director_ota_password: "your-ota-password"
 web_username: "admin"
 web_password: "your-web-password"
 ```
+
+### Reliability and Recovery
+
+The director drives a 5 V boost converter for the RS-485 transceiver on GPIO16. If that rail
+is still powered when the ESP32 resets, the board can hang at boot and stay offline until it
+is physically power-cycled. Four settings in the example config work together to avoid that;
+they are worth understanding before you change any of them.
+
+**Drop the boost rail and wait, on every reboot.**
+
+```yaml
+esphome:
+  on_shutdown:
+    then:
+      - output.turn_off: tcan485_boost_en
+      - lambda: 'delay(250);'
+```
+
+`App.reboot()` runs the `on_shutdown` hooks and then resets immediately, with no component
+teardown. Without a blocking wait the rail is still up when the reset lands. An ESPHome
+automation `delay:` will not do — it hands control back to the scheduler, which is no longer
+running. The `lambda` form blocks, which is what is wanted here. OTA updates take a different
+path (`App.safe_reboot()`) that tears components down first, which is why an OTA reboot can
+appear to work while every other reboot hangs.
+
+**Never reboot because Home Assistant went away.**
+
+```yaml
+api:
+  reboot_timeout: 0s
+```
+
+The default is 15 minutes, after which the device reboots itself if no API client has
+connected. A Home Assistant upgrade looks exactly like that, so the default turns every long
+upgrade into a reset of a live charge controller. The TWCs fall back to a safe current on
+their own link timeout if the director really has stopped, so there is nothing gained by
+rebooting.
+
+**Recover from a wedged WiFi stack explicitly.**
+
+```yaml
+script:
+  - id: wifi_recovery_reboot
+    mode: single
+    then:
+      - delay: 10min
+      - lambda: 'App.safe_reboot();'
+
+interval:
+  - interval: 30s
+    then:
+      - if:
+          condition:
+            wifi.connected:
+          then:
+            - script.stop: wifi_recovery_reboot
+          else:
+            - script.execute: wifi_recovery_reboot
+```
+
+ESPHome's built-in `wifi: reboot_timeout:` is gated behind having no fallback AP configured.
+Because this config defines an `ap:` for hands-on recovery, that built-in never fires and a
+WiFi stack that will not reassociate would sit there indefinitely. This pair restores the
+behaviour, and reboots through `App.safe_reboot()` so the teardown and the settle above both
+run.
+
+**Keep the diagnostics.** `debug`, `uptime`, `wifi_signal` and `wifi_info` cost very little
+and are the only way to tell what happened after the fact. `Reset Reason` on the boot
+following an incident is the important one: `Power On Reset` means the board was wedged and
+you power-cycled it, whereas `Brownout` or `Task Watchdog` points at a crash loop and a
+hardware problem instead.
 
 ### Multiple Wall Connectors
 
@@ -322,6 +395,16 @@ For each configured Wall Connector, you'll get:
 - **Session Current Number** - Adjust active session current
 - **Increase Current Button** - Request TWC to increase current (sends 0x06 command)
 - **Decrease Current Button** - Request TWC to decrease current (sends 0x07 command)
+
+#### Diagnostics
+
+Device-wide rather than per-TWC, and the first place to look after an unexplained outage:
+
+- **Reset Reason** - Why the last boot happened (see [Troubleshooting](#device-goes-offline-and-never-comes-back))
+- **Uptime** - Seconds since boot
+- **Heap Free** / **Heap Max Block** - Memory headroom and fragmentation
+- **Loop Time** - Main loop duration, for spotting blocking work
+- **WiFi Signal**, **IP Address**, **BSSID** - Association health and which AP it landed on
 
 ### Automation Examples
 
@@ -463,7 +546,7 @@ The **Status** text sensor shows the current TWC state:
 
 ## Protocol Details
 
-This component implements the Tesla Gen2 Wall Connector RS-485 protocol. For detailed protocol documentation, see [PROTOCOL.md](components/twc_director/twc/PROTOCOL.md).
+This component implements the Tesla Gen2 Wall Connector RS-485 protocol. For detailed protocol documentation, see [PROTOCOL.md](components/twc_director/PROTOCOL.md).
 
 Key protocol features:
 - **SLIP framing** for reliable RS-485 communication
@@ -483,10 +566,26 @@ Key protocol features:
 
 ### TWC shows offline
 
-1. **Increase log level**: Set `logger: level: VERBOSE` to see detailed protocol traffic
+1. **Increase log level**: Set `logger: level: DEBUG` to see decoded protocol frames
 2. **Check RS-485 Link Status** sensor in Home Assistant
 3. **Verify physical connections**: Look for loose wiring
 4. **Check power**: Ensure TWC is powered and LED is lit
+
+### Device goes offline and never comes back
+
+Usually seen around a Home Assistant upgrade, and needing a physical power cycle to clear.
+
+1. **Check `Reset Reason`** after you power-cycle it. `Power On Reset` confirms the board was
+   hung rather than crash-looping; `Brownout` or `Task Watchdog` means something else.
+2. **Confirm `api: reboot_timeout: 0s`** is set. The 15 minute default reboots the device
+   whenever Home Assistant is down that long, and every reboot is a chance to hang.
+3. **Confirm the `on_shutdown` settle** — the `- lambda: 'delay(250);'` after turning off
+   `tcan485_boost_en`. An automation `delay:` there does nothing. Try 500 ms if it recurs.
+4. **Check the boost enable line** floats low at reset. Software cannot help on a crash,
+   watchdog or brownout reset — those never run `on_shutdown` — so if `Reset Reason` shows
+   one of those, the fix is a pulldown on the GPIO16 enable net.
+
+See [Reliability and Recovery](#reliability-and-recovery) for the reasoning behind each.
 
 ### Current limits not applying
 
@@ -504,6 +603,13 @@ logger:
     twc_director: VERBOSE
 ```
 
+`VERBOSE` compiles in a log line for every byte received on the RS-485 bus. That is roughly
+960 formatted lines per second at 9600 baud, all pushed over the API socket, which is enough
+to disrupt the connection. The example config ships `level: DEBUG` for that reason — DEBUG
+still hex-dumps every decoded frame, which is what you want for protocol work. Raise it to
+`VERBOSE` only while actively debugging framing, and note that the runtime log-level select
+can only reach levels that were compiled in.
+
 ## Development
 
 ### Project Structure
@@ -515,16 +621,19 @@ esphome-twc-director/
 │       ├── __init__.py              # ESPHome component registration
 │       ├── twc_director_component.cpp  # Main component implementation
 │       ├── twc_director_component.h    # Component header
-│       ├── twc_lib_shim.cpp         # C/C++ library bridge
-│       └── twc/                     # Core TWC protocol library (C)
-│           ├── PROTOCOL.md          # Protocol documentation
-│           ├── twc_core.c/h         # Core protocol state machine
-│           ├── twc_device.c/h       # Device management
-│           ├── twc_frame.c/h        # SLIP framing
-│           └── twc_protocol.c/h     # Protocol definitions
+│       ├── PROTOCOL.md              # Protocol documentation
+│       ├── twc_core.c/h             # Core protocol state machine
+│       ├── twc_device.c/h           # Device management
+│       ├── twc_frame.c/h            # SLIP framing
+│       └── twc_protocol.c/h         # Protocol definitions
 ├── tesla-director.yaml              # Example configuration
 └── README.md                        # This file
 ```
+
+The C protocol library must stay flat alongside the component sources. ESPHome copies
+only the files sitting directly in a component's directory into the generated project —
+it does not recurse into subdirectories for external components — so a nested `twc/`
+folder would never reach the build.
 
 ### Building from Source
 

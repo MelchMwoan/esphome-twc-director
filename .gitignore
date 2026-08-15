@@ -416,3 +416,12 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Local ESPHome config and secrets - contains plaintext API key / OTA and AP passwords
+tesla-director-real.yaml
+secrets.yaml
+.esphome/
+
+# Local agent instructions
+CLAUDE.md
+.claude/

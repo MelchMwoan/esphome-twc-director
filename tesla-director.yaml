@@ -32,7 +32,11 @@ esphome:
   on_shutdown:
     then:
       - output.turn_off: tcan485_boost_en       # Disable GPIO16 before reset to avoid boot hang
-      
+      # Blocking settle. App.reboot() calls on_shutdown then arch_restart() immediately, with
+      # no teardown, so without this the 5V rail is still up when the ESP32 resets. An
+      # automation `delay:` is scheduler-based and would not block here.
+      - lambda: 'delay(250);'
+
 esp32:
   board: esp32dev
   framework:
@@ -44,13 +48,19 @@ external_components:
       url: https://github.com/Wired-Square/esphome-twc-director.git
 
 logger:
-  level: VERBOSE
+  # DEBUG, not VERBOSE: VERBOSE compiles in the per-received-byte RX log, which the runtime
+  # log-level select can turn on at any time. At 9600 baud that is ~960 formatted lines/sec
+  # pushed over the API socket.
+  level: DEBUG
   initial_level: INFO
   baud_rate: 0
 
 api:
   encryption:
     key: !secret tesla_director_api_key
+  # Never reboot just because Home Assistant is away (upgrades, restarts). The default 15min
+  # takes a live charge controller down via App.reboot(), which is the unsafe reset path.
+  reboot_timeout: 0s
 
 ota:
   - platform: esphome
@@ -76,7 +86,31 @@ web_server:
     password: !secret web_password
 
 captive_portal:
-    
+
+# WiFi recovery watchdog. The fallback `ap:` above disables ESPHome's built-in
+# wifi.reboot_timeout (gated on !has_ap()), so a wedged WiFi stack would never recover on its
+# own. Reboot through App.safe_reboot() so the on_shutdown settle above actually runs.
+script:
+  - id: wifi_recovery_reboot
+    mode: single
+    then:
+      - delay: 10min
+      - logger.log:
+          level: ERROR
+          format: "WiFi down for 10 min - safe rebooting"
+      - lambda: 'App.safe_reboot();'
+
+interval:
+  - interval: 30s
+    then:
+      - if:
+          condition:
+            wifi.connected:
+          then:
+            - script.stop: wifi_recovery_reboot
+          else:
+            - script.execute: wifi_recovery_reboot
+
 # UART on the RS-485 transceiver
 uart:
   id: twc_uart
@@ -106,6 +140,39 @@ select:
   - platform: logger
     name: Tesla Director log level
     disabled_by_default: true
+
+# Diagnostics. On the boot following an incident, Reset Reason separates a bootloader hang
+# (Power On Reset - it needed a power cycle) from a crash loop (Brownout / Task Watchdog).
+debug:
+  update_interval: 60s
+
+binary_sensor:
+  - platform: status
+    name: "Status"
+
+sensor:
+  - platform: debug
+    free:
+      name: "Heap Free"
+    block:
+      name: "Heap Max Block"
+    loop_time:
+      name: "Loop Time"
+  - platform: uptime
+    name: "Uptime"
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+
+text_sensor:
+  - platform: debug
+    reset_reason:
+      name: "Reset Reason"
+  - platform: wifi_info
+    ip_address:
+      name: "IP Address"
+    bssid:
+      name: "BSSID"
 
 twc_director:
   id: twc_component
