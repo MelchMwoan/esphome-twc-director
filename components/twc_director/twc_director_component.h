@@ -14,9 +14,9 @@
 #include "esphome/components/button/button.h"
 
 extern "C" {
-#include "twc/twc_frame.h"
-#include "twc/twc_core.h"
-#include "twc/twc_protocol.h"
+#include "twc_frame.h"
+#include "twc_core.h"
+#include "twc_protocol.h"
 }
 
 namespace esphome {

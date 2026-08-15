@@ -6,6 +6,7 @@
 #include "twc_protocol.h"
 
 #include <stdio.h>
+#include <stdlib.h>  // rand()
 #include <string.h>
 
 // =============================================================================

@@ -348,11 +348,6 @@ async def to_code(config):
     # Get the UART parent (the RS-485 UART you configured in YAML)
     uart_comp = await cg.get_variable(config[CONF_UART_ID])
 
-    # Add the component directory to the include path so C++ can find twc/*.h files
-    import os
-    component_dir = os.path.dirname(__file__)
-    cg.add_build_flag(f"-I{component_dir}")
-
     # Create the C++ TWCDirectorComponent instance, passing the UART
     var = cg.new_Pvariable(config[CONF_ID], uart_comp)
     # Set the master address (the TWC Director's own ID on the RS-485 bus)
